@@ -16,9 +16,6 @@ type KeyPair = E (Word64, Word64)
 
 type RoomKey = KeyPair
 
-old = ProjFst
-new = ProjSnd
-
 -- Runs a RoomKey through a lock.  Return a signal if the door unlocks.
 doorLock :: (Word64, Word64) -> RoomKey -> GIGL (E Bool)
 doorLock initLock key = do
@@ -29,6 +26,9 @@ doorLock initLock key = do
   -- Update lock state: if the old key matches the new lock, then use the key as the next lock state, else keep the state the same.
   lock <== mux (old key .== new lock) key lock
   return unlock
+  where
+  old = ProjFst
+  new = ProjSnd
 
 -- Hotel events (event code, (room#, data pair)):
 --   checkin     (1, (room#, _))
@@ -36,14 +36,6 @@ doorLock initLock key = do
 --   access room (3, (room#, room key))
 type HotelEvent = E (Word64, (Word64, (Word64, Word64)))
 
-checkinRoom :: Word64 -> HotelEvent -> E Bool
-checkinRoom room a = ProjFst a .== Const 1 &&& ProjFst (ProjSnd a) .== Const room
-
-checkout :: HotelEvent -> E Bool
-checkout a = ProjFst a .== Const 2
-
-accessRoom :: Word64 -> HotelEvent -> E Bool
-accessRoom room a = ProjFst a .== Const 3 &&& ProjFst (ProjSnd a) .== Const room
 
 -- A hotel with a front desk and two rooms.
 hotel :: GIGL ()
@@ -62,8 +54,7 @@ hotel = do
   -- Output variables:
 
   -- New room key created for checkins.
-  roomKey :: E (Word64, Word64) <- var "newKey" $ Just (0, 0)
-  roomKey <== Const (0, 0)
+  roomKey :: E (Word64, Word64) <- var' "newKey" $ Const (0, 0)
 
   -- Door lock 1 and 2 unlocks.
   unlockDoor1 <- var' "doorUnlock1" $ Const False
@@ -98,4 +89,13 @@ hotel = do
     -- Access attempt room 2.
     , (accessRoom 2, doorLock2 key >>= (unlockDoor2 <==))
     ]
+
+  where
+  -- Predicates for casing on hotel events.
+  checkinRoom :: Word64 -> HotelEvent -> E Bool
+  checkinRoom room a = ProjFst a .== Const 1 &&& ProjFst (ProjSnd a) .== Const room
+  checkout :: HotelEvent -> E Bool
+  checkout a = ProjFst a .== Const 2
+  accessRoom :: Word64 -> HotelEvent -> E Bool
+  accessRoom room a = ProjFst a .== Const 3 &&& ProjFst (ProjSnd a) .== Const room
 
