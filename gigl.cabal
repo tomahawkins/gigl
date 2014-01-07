@@ -1,0 +1,29 @@
+name:    gigl
+version: 0.0.0
+
+category: Language
+
+synopsis:    GIGL (pronouced giggle): a Global declarations, Imparative, Goto Language.
+description: GIGL (pronouced giggle): a Global declarations, Imparative, Goto Language.
+
+author:     Tom Hawkins  <tomahawkins@gmail.com>
+maintainer: Tom Hawkins  <tomahawkins@gmail.com>
+
+license: BSD3
+license-file: LICENSE
+
+build-type:    Simple
+cabal-version: >= 1.9.2
+
+library
+  build-depends:
+    base     >= 4.0,
+    monadLib >= 3.7.2,
+    sbv      >= 2.10
+  exposed-modules:
+    Language.GIGL
+
+source-repository head
+  type:     git
+  location: git://github.com/tomahawkins/gigl.git
+
