@@ -14,6 +14,7 @@ module Language.GIGL
   , elaborate
   -- * Language Declarations
   , var
+  , var'
   , array
   , function
   -- * Language Mechanisms
@@ -78,6 +79,13 @@ instance Var Bool   where var = undefined
 instance Var Word64 where var = undefined
 instance (Var a, Var b) => Var (a, b) where var = undefined
 
+-- | Declares are variable and makes an immediate assignment.
+var' :: Var a => String -> E a -> GIGL b (E a)
+var' name expr = do
+  v <- var name Nothing
+  v <== expr
+  return v
+
 -- | Declares a new state array variable.
 array :: String -> Integer -> GIGL a (E (Array b))
 array = undefined
@@ -126,3 +134,4 @@ assert = undefined
 -- | Assume an expression is true.
 assume :: String -> E Bool -> GIGL a ()
 assume = undefined
+

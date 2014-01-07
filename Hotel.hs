@@ -24,10 +24,8 @@ doorLock :: (Word64, Word64) -> RoomKey -> GIGL (E Bool)
 doorLock initLock key = do
   -- Lock state.
   lock <- var "lock" $ Just initLock
-  -- Output unlock signal.
-  unlock <- var "unlock" $ Just False
   -- Unlock the door if the key matches the lock state or if the old key value matches the new lock value.
-  unlock <== key .== lock ||| old key .== new lock
+  unlock <- var' "unlock" $ key .== lock ||| old key .== new lock
   -- Update lock state: if the old key matches the new lock, then use the key as the next lock state, else keep the state the same.
   lock <== mux (old key .== new lock) key lock
   return unlock
@@ -68,10 +66,8 @@ hotel = do
   roomKey <== Const (0, 0)
 
   -- Door lock 1 and 2 unlocks.
-  unlockDoor1 <- var "doorUnlock1" $ Just False
-  unlockDoor2 <- var "doorUnlock2" $ Just False
-  unlockDoor1 <== Const False
-  unlockDoor2 <== Const False
+  unlockDoor1 <- var' "doorUnlock1" $ Const False
+  unlockDoor2 <- var' "doorUnlock2" $ Const False
 
   -- Nondeterminstic input event.
   event :: HotelEvent <- var "event" Nothing
