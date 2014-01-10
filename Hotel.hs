@@ -4,11 +4,13 @@ module Main (main) where
 import Data.Word
 import Language.GIGL hiding (GIGL)
 import qualified Language.GIGL as G
+import Language.GIGL.ACL2
 
 main :: IO ()
 main = do
-  _ <- elaborate () hotel
-  return ()
+  a <- acl2 "hotel" () hotel
+  putStrLn a
+  writeFile "hotel.lisp" a
 
 type GIGL = G.GIGL ()
 
@@ -17,12 +19,12 @@ type KeyPair = E (Word64, Word64)
 type RoomKey = KeyPair
 
 -- Runs a RoomKey through a lock.  Return a signal if the door unlocks.
-doorLock :: (Word64, Word64) -> RoomKey -> GIGL (E Bool)
-doorLock initLock key = do
+doorLock :: Int -> (Word64, Word64) -> RoomKey -> GIGL (E Bool)
+doorLock room initLock key = do
   -- Lock state.
-  lock <- var "lock" $ Just initLock
+  lock <- var ("lock" ++ show room) $ Just initLock
   -- Unlock the door if the key matches the lock state or if the old key value matches the new lock value.
-  unlock <- var' "unlock" $ key .== lock ||| old key .== new lock
+  unlock <- var' ("unlock" ++ show room) $ key .== lock ||| old key .== new lock
   -- Update lock state: if the old key matches the new lock, then use the key as the next lock state, else keep the state the same.
   lock <== mux (old key .== new lock) key lock
   return unlock
@@ -41,8 +43,8 @@ type HotelEvent = E (Word64, (Word64, (Word64, Word64)))
 hotel :: GIGL ()
 hotel = do
   -- Initalize the 2 doors.
-  let doorLock1 = doorLock (0, 1)
-      doorLock2 = doorLock (0, 2)
+  let doorLock1 = doorLock 1 (0, 1)
+      doorLock2 = doorLock 2 (0, 2)
 
   -- Variables to keep track of the current door settings (init to 1 and 2).
   door1 :: E Word64 <- var "door1" $ Just 1

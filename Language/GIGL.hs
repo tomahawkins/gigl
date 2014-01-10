@@ -1,4 +1,3 @@
-{-# OPTIONS_GHC -W #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE EmptyDataDecls    #-}
 {-# LANGUAGE GADTs             #-}
@@ -7,26 +6,34 @@ module Language.GIGL
   -- * Types
     GIGL
   , Program (..)
+  , Value   (..)
+  , Value'  (..)
   , E       (..)
+  , Stmt    (..)
+  , Tuple2
   , Label
   , Boolean (..)
-  -- * Program Elaboration
+  -- * Program Compilation
   , elaborate
-  -- * Language Declarations
+  , getMeta
+  , setMeta
+  , modifyMeta
+  -- * Declarations
   , var
   , var'
   , array
   , function
-  -- * Language Mechanisms
+  -- * Statements
+  , (<==)
   , case'
   , if'
   , goto
+  , assert
+  , assume
+  -- * Expressions
   , (.==)
   , (./=)
   , mux
-  , (<==)
-  , assert
-  , assume
   ) where
 
 import MonadLib hiding (Label)
@@ -34,18 +41,54 @@ import Data.SBV (Boolean (..))
 import Data.Word
 
 -- | The monad to capture program statements.
-type GIGL a = StateT (a, Program) IO
+type GIGL a = StateT (a, Program) Id
+
+modify :: ((a, Program) -> (a, Program)) -> GIGL a ()
+modify f = get >>= set . f
+
+-- | Get the meta data.
+getMeta :: GIGL a a
+getMeta = get >>= return . fst
+
+-- | Set the meta data.
+setMeta :: a -> GIGL a ()
+setMeta a = modify $ \ (_, p) -> (a, p)
+
+-- | Modify the meta data.
+modifyMeta :: (a -> a) -> GIGL a ()
+modifyMeta f = modify $ \ (a, p) -> (f a, p)
 
 data Program = Program
+  { variables :: [(String, Maybe Value)]
+  , statement :: Stmt
+  }
+
+data Value
+  = VBool   Bool
+  | VWord64 Word64
+  | VPair   Value Value
+
+class    Value' a      where value :: a -> Value
+instance Value' Bool   where value = VBool
+instance Value' Word64 where value = VWord64
+instance (Value' a, Value' b) => Value' (a, b) where value (a, b) = VPair (value a) (value b)
+
+data Stmt where
+  Null   :: Stmt
+  Seq    :: Stmt -> Stmt -> Stmt
+  If     :: E Bool -> Stmt -> Stmt -> Stmt
+  Assign :: Value' a => E a -> E a -> Stmt
 
 -- | Program expressions.
 data E a where 
   Variable   :: String -> E a
   ArrayIndex :: E (Array a) -> E Word64 -> E a
+  Let        :: String -> E b -> E a -> E a
   Tuple2     :: E a -> E b -> E (a, b)
+  Tuple2'    :: E a -> E b -> E Tuple2
   ProjFst    :: E (a, b) -> E a
   ProjSnd    :: E (a, b) -> E b
-  Const      :: a -> E a
+  Const      :: Value' a => a -> E a
   Add        :: E Word64 -> E Word64 -> E Word64
   Not        :: E Bool -> E Bool
   And        :: E Bool -> E Bool -> E Bool
@@ -54,6 +97,8 @@ data E a where
   Equiv      :: E Bool -> E Bool -> E Bool
   Eq         :: E a -> E a -> E Bool
   Mux        :: E Bool -> E a -> E a -> E a
+
+data Tuple2
 
 data Array a
 
@@ -71,16 +116,31 @@ instance Boolean (E Bool) where
 type Label = String
 
 -- | Elaborate a program.
-elaborate :: a -> GIGL a () -> IO (a, Program)
-elaborate a b = runStateT (a, Program) b >>= return . snd
+elaborate :: a -> GIGL a () -> (a, Program)
+elaborate a b = snd $ runId $ runStateT (a, Program { variables = [], statement = Null }) b
 
-class    Var a      where var :: String -> Maybe a -> GIGL b (E a)
-instance Var Bool   where var = undefined
-instance Var Word64 where var = undefined
-instance (Var a, Var b) => Var (a, b) where var = undefined
+-- | Declares a variabled with an initial value.
+var :: Value' a => String -> Maybe a -> GIGL b (E a)
+var name init = do
+  name <- mangle name
+  modify $ \ (a, p) -> (a, p { variables = variables p ++ [(name, value' init)] })
+  return $ Variable name
+  where
+  value' :: Value' a => Maybe a -> Maybe Value
+  value' init = case init of
+    Nothing -> Nothing
+    Just a  -> Just $ value a
 
--- | Declares are variable and makes an immediate assignment.
-var' :: Var a => String -> E a -> GIGL b (E a)
+-- | Mange names to ensure variable uniqueness.
+mangle :: String -> GIGL a String
+mangle name = do
+  (_, Program variables _) <- get
+  let vars = map fst variables
+      mangle n = if notElem name' vars then name' else mangle (n + 1) where name' = name ++ "_m" ++ show n
+  if notElem name vars then return name else return (mangle 0)
+
+-- | Declares a variable and makes an immediate assignment.
+var' :: Value' a => String -> E a -> GIGL b (E a)
 var' name expr = do
   v <- var name Nothing
   v <== expr
@@ -107,7 +167,20 @@ case' a b = case b of
 
 -- | If then else statement.
 if' :: E Bool -> GIGL a () -> GIGL a () -> GIGL a ()
-if' = undefined
+if' pred onTrue onFalse = do
+  (s, p) <- get
+  set (s, p { statement = Null })
+  onTrue
+  (s, pT) <- get
+  set (s, pT { statement = Null })
+  onFalse
+  (s, pF) <- get
+  set (s, Program { variables = variables pF, statement = statement p })
+  stmt $ If pred (statement pT) (statement pF)
+
+-- | Adds a statement to the program.
+stmt :: Stmt -> GIGL a ()
+stmt s = modify $ \ (a, p) -> (a, p { statement = Seq (statement p) s }) 
 
 infix 4 .==, ./=
 -- | Equality.
@@ -120,8 +193,8 @@ a ./= b = bnot $ a .== b
 
 infix 0 <==
 -- | Variable assignment.
-(<==) :: E a -> E a -> GIGL b ()
-(<==) = undefined
+(<==) :: Value' a => E a -> E a -> GIGL b ()
+a <== b = stmt $ Assign a b
 
 -- | Conditional expression.
 mux :: E Bool -> E a -> E a -> E a
