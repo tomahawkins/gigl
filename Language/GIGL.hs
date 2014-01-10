@@ -31,6 +31,7 @@ module Language.GIGL
   , assert
   , assume
   -- * Expressions
+  , let'
   , (.==)
   , (./=)
   , mux
@@ -181,6 +182,10 @@ if' pred onTrue onFalse = do
 -- | Adds a statement to the program.
 stmt :: Stmt -> GIGL a ()
 stmt s = modify $ \ (a, p) -> (a, p { statement = Seq (statement p) s }) 
+
+-- | Non recursive let expression.
+let' :: String -> E a -> E b -> E b
+let' = Let
 
 infix 4 .==, ./=
 -- | Equality.

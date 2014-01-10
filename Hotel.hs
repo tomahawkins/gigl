@@ -7,10 +7,7 @@ import qualified Language.GIGL as G
 import Language.GIGL.ACL2
 
 main :: IO ()
-main = do
-  a <- acl2 "hotel" () hotel
-  putStrLn a
-  writeFile "hotel.lisp" a
+main = writeFile "hotel.lisp" $ show $ acl2 "hotel" () hotel
 
 type GIGL = G.GIGL ()
 

@@ -1,9 +1,12 @@
 -- | ACL2 generation.
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE GADTs      #-}
+{-# LANGUAGE RankNTypes #-}
 module Language.GIGL.ACL2
   ( SExpr (..)
   , acl2
   ) where
+
+import MonadLib
 
 import Language.GIGL
 
@@ -17,8 +20,10 @@ acl2' name p = SA [SV "defun", SV name, SA [SV "vars-in)"], acl2SExpr $ letRewri
   vars = [ v | (v, _) <- variables p ]
 
 letRewrite :: [String] -> Stmt -> E Tuple2
-letRewrite vars _ = input (zip [0 ..] vars) $ output vars
+letRewrite vars s = input (zip [0 ..] vars) $ body $ output vars
   where
+  (_, _, body) = elaborate (0, [], id) $ stmt s
+
   input :: [(Int, String)] -> E a -> E a
   input a = case a of
     [] -> id
@@ -91,12 +96,25 @@ acl2Value a = case a of
   VWord64 a     -> SV $ show a
   VPair   a b   -> SA [SV "cons", acl2Value a, acl2Value b]
 
-newBool :: GIGL (Int, E a) (E Bool)
-newBool = undefined
+type ACL2 = GIGL (Int, [(String, String)], E a -> E a)  -- Id for genvars and environment.
 
-stmt :: Stmt -> GIGL (Int, E a) ()
+newVar :: ACL2 String
+newVar = do
+  (n, e, f) <- getMeta
+  setMeta (n + 1, e, f)
+  return $ "_" ++ show n
+
+newLet :: E a -> ACL2 (E b -> E b)
+newLet a = do
+  v <- newVar
+  return $ Let v a
+  
+stmt :: Stmt -> ACL2 ()
 stmt a = case a of
   Null -> return ()
   Seq a b -> stmt a >> stmt b
-  --If a b c -> 
-
+  {-
+  If a b c -> do
+    a' <- newVar
+    let' a' a
+-}
