@@ -10,7 +10,7 @@ module Language.GIGL
   , Value'  (..)
   , E       (..)
   , Stmt    (..)
-  , Tuple2
+  , Untyped
   , Label
   , Boolean (..)
   -- * Program Compilation
@@ -82,24 +82,24 @@ data Stmt where
 
 -- | Program expressions.
 data E a where 
-  Variable   :: String -> E a
-  ArrayIndex :: E (Array a) -> E Word64 -> E a
-  Let        :: String -> E b -> E a -> E a
-  Tuple2     :: E a -> E b -> E (a, b)
-  Tuple2'    :: E a -> E b -> E Tuple2
-  ProjFst    :: E (a, b) -> E a
-  ProjSnd    :: E (a, b) -> E b
-  Const      :: Value' a => a -> E a
-  Add        :: E Word64 -> E Word64 -> E Word64
-  Not        :: E Bool -> E Bool
-  And        :: E Bool -> E Bool -> E Bool
-  Or         :: E Bool -> E Bool -> E Bool
-  Imply      :: E Bool -> E Bool -> E Bool
-  Equiv      :: E Bool -> E Bool -> E Bool
-  Eq         :: E a -> E a -> E Bool
-  Mux        :: E Bool -> E a -> E a -> E a
+  Var     :: String -> E a
+  Index   :: E (Array a) -> E Word64 -> E a
+  Let     :: String -> E b -> E a -> E a
+  Untyped :: E a -> E Untyped
+  Pair    :: E a -> E b -> E (a, b)
+  Fst     :: E (a, b) -> E a
+  Snd     :: E (a, b) -> E b
+  Const   :: Value' a => a -> E a
+  Add     :: E Word64 -> E Word64 -> E Word64
+  Not     :: E Bool -> E Bool
+  And     :: E Bool -> E Bool -> E Bool
+  Or      :: E Bool -> E Bool -> E Bool
+  Imply   :: E Bool -> E Bool -> E Bool
+  Equiv   :: E Bool -> E Bool -> E Bool
+  Eq      :: E a -> E a -> E Bool
+  Mux     :: E Bool -> E a -> E a -> E a
 
-data Tuple2
+data Untyped
 
 data Array a
 
@@ -125,7 +125,7 @@ var :: Value' a => String -> Maybe a -> GIGL b (E a)
 var name init = do
   name <- mangle name
   modify $ \ (a, p) -> (a, p { variables = variables p ++ [(name, value' init)] })
-  return $ Variable name
+  return $ Var name
   where
   value' :: Value' a => Maybe a -> Maybe Value
   value' init = case init of

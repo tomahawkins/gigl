@@ -19,15 +19,15 @@ type RoomKey = KeyPair
 doorLock :: Int -> (Word64, Word64) -> RoomKey -> GIGL (E Bool)
 doorLock room initLock key = do
   -- Lock state.
-  lock <- var ("lock" ++ show room) $ Just initLock
+  lock <- var ("doorLockState" ++ show room ++ "_lock") $ Just initLock
   -- Unlock the door if the key matches the lock state or if the old key value matches the new lock value.
-  unlock <- var' ("unlock" ++ show room) $ key .== lock ||| old key .== new lock
+  unlock <- var' ("doorLockState" ++ show room ++ "_unlock") $ key .== lock ||| old key .== new lock
   -- Update lock state: if the old key matches the new lock, then use the key as the next lock state, else keep the state the same.
   lock <== mux (old key .== new lock) key lock
   return unlock
   where
-  old = ProjFst
-  new = ProjSnd
+  old = Fst
+  new = Snd
 
 -- Hotel events (event code, (room#, data pair)):
 --   checkin     (1, (room#, _))
@@ -53,28 +53,28 @@ hotel = do
   -- Output variables:
 
   -- New room key created for checkins.
-  roomKey :: E (Word64, Word64) <- var' "newKey" $ Const (0, 0)
+  newRoomKey :: E (Word64, Word64) <- var' "newRoomKey" $ Const (0, 0)
 
   -- Door lock 1 and 2 unlocks.
-  unlockDoor1 <- var' "doorUnlock1" $ Const False
-  unlockDoor2 <- var' "doorUnlock2" $ Const False
+  unlockDoor1 <- var' "unlockDoor1" $ Const False
+  unlockDoor2 <- var' "unlockDoor2" $ Const False
 
   -- Nondeterminstic input event.
   event :: HotelEvent <- var "event" Nothing
-  let key = ProjSnd $ ProjSnd event
+  let key = Snd $ Snd event
 
   -- Case on the incoming HotelEvent.
   case' event
     -- Checkin to room 1.
     [ (checkinRoom 1, do
-        roomKey <== Tuple2 door1 nextKey
+        newRoomKey <== Pair door1 nextKey
         door1   <== nextKey
         nextKey <== Add nextKey (Const 1)
       )
 
     -- Checkin to room 2.
     , (checkinRoom 2, do
-        roomKey <== Tuple2 door2 nextKey
+        newRoomKey <== Pair door2 nextKey
         door2   <== nextKey
         nextKey <== Add nextKey (Const 1)
       )
@@ -92,9 +92,9 @@ hotel = do
   where
   -- Predicates for casing on hotel events.
   checkinRoom :: Word64 -> HotelEvent -> E Bool
-  checkinRoom room a = ProjFst a .== Const 1 &&& ProjFst (ProjSnd a) .== Const room
+  checkinRoom room a = Fst a .== Const 1 &&& Fst (Snd a) .== Const room
   checkout :: HotelEvent -> E Bool
-  checkout a = ProjFst a .== Const 2
+  checkout a = Fst a .== Const 2
   accessRoom :: Word64 -> HotelEvent -> E Bool
-  accessRoom room a = ProjFst a .== Const 3 &&& ProjFst (ProjSnd a) .== Const room
+  accessRoom room a = Fst a .== Const 3 &&& Fst (Snd a) .== Const room
 

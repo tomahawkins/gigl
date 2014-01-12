@@ -3,8 +3,8 @@ version: 0.0.0
 
 category: Language
 
-synopsis:    GIGL (pronouced giggle): a Global declarations, Imparative, Goto Language.
-description: GIGL (pronouced giggle): a Global declarations, Imparative, Goto Language.
+synopsis:    GIGL: a Global declarations, Imparative, Goto Language.
+description: GIGL: a Global declarations, Imparative, Goto Language.
 
 author:     Tom Hawkins  <tomahawkins@gmail.com>
 maintainer: Tom Hawkins  <tomahawkins@gmail.com>
