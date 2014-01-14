@@ -7,7 +7,7 @@ import qualified Language.GIGL as G
 import Language.GIGL.ACL2
 
 main :: IO ()
-main = writeFile "hotel.lisp" $ show $ acl2 "hotel" () hotel
+main = writeFile "hotel.lisp" $ unlines $ map show $ acl2 "hotel" () hotel
 
 type GIGL = G.GIGL ()
 
@@ -90,7 +90,7 @@ hotel = do
     ]
 
   where
-  -- Predicates for casing on hotel events.
+  -- Predicates for hotel events.
   checkinRoom :: Word64 -> HotelEvent -> E Bool
   checkinRoom room a = Fst a .== Const 1 &&& Fst (Snd a) .== Const room
   checkout :: HotelEvent -> E Bool

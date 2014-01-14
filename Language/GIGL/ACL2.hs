@@ -11,11 +11,15 @@ import MonadLib
 import Language.GIGL
 
 -- | ACL2 generation.
-acl2 :: String -> a -> GIGL a () -> SExpr
+acl2 :: String -> a -> GIGL a () -> [SExpr]
 acl2 name a b = acl2' name $ snd $ elaborate a b
 
-acl2' :: String -> Program -> SExpr
-acl2' name p = SA [SV "defun", SV name, SA [SV "vars-in"], acl2SExpr $ letRewrite vars $ statement p]
+acl2' :: String -> Program -> [SExpr]
+acl2' name p = 
+  [ SA [SV "set-ignore-ok", SV ":warn"]
+  , SA [SV "defun", SV $ name ++ "-init", SA [SV "vars-in"], acl2SExpr $ initialConditions $ variables p]
+  , SA [SV "defun", SV name,              SA [SV "vars-in"], acl2SExpr $ letRewrite vars   $ statement p]
+  ]
   where
   vars = [ v | (v, _) <- variables p ]
 
@@ -25,8 +29,18 @@ letRewrite vars s = inputProject vars $ body $ outputTuple vars
   body :: E Untyped -> E Untyped
   ((), (_, _, body)) = runId $ runStateT (0, zip vars vars, id) $ stmt s >> bindOutputs vars
 
+-- | Initial condition relation.
+initialConditions :: [(String, Maybe Value)] -> E Bool
+initialConditions vars = inputProject (fst $ unzip vars) $ foldl (&&&) true [ init (Var name .==) value | (name, Just value) <- vars ]
+  where
+  init :: (E Untyped -> E Bool) -> Value -> E Bool
+  init f value = case value of
+    VBool   a   -> f $ Untyped (Const a)
+    VWord64 a   -> f $ Untyped (Const a)
+    VPair   a b -> init (\ a -> init (\ b -> f $ Untyped $ Pair a b) b) a
+
 -- | Variable projection from input tuple.
-inputProject :: [String] -> E Untyped -> E Untyped
+inputProject :: [String] -> E a -> E a
 inputProject vars = input $ zip [0 ..] vars
   where
   input :: [(Int, String)] -> E a -> E a
@@ -72,11 +86,11 @@ acl2SExpr a = case a of
   Const   a     -> acl2Value $ value a
   Add     a b   -> f2 "+" a b
   Not     a     -> f1 "not" a
-  And     a b   -> f2 "and" a b
-  Or      a b   -> f2 "or" a b
+  And     _ _   -> SA $ SV "and" : ands a
+  Or      _ _   -> SA $ SV "or"  : ors  a
   Imply   a b   -> f2 "implies" a b
-  Equiv   a b   -> f2 "equals" a b
-  Eq      a b   -> f2 "equals" a b
+  Equiv   a b   -> f2 "equal" a b
+  Eq      a b   -> f2 "equal" a b
   Mux     a b c -> f3 "if" a b c
   where
   f :: E a -> SExpr
@@ -93,6 +107,19 @@ acl2SExpr a = case a of
       where
       (lets, b') = combineLets b
     a -> ([], f a)
+  ands :: E Bool -> [SExpr]
+  ands a = case a of
+    And (Const True) a -> ands a
+    And a (Const True) -> ands a
+    And a b -> ands a ++ ands b
+    a -> [f a]
+  ors :: E Bool -> [SExpr]
+  ors a = case a of
+    Or (Const False) a -> ors a
+    Or a (Const False) -> ors a
+    Or a b -> ors a ++ ors b
+    a -> [f a]
+    
 
 acl2Value :: Value -> SExpr
 acl2Value a = case a of
