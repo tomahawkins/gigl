@@ -3,7 +3,7 @@ all: dist/setup-config Hotel.hs
 	runhaskell -W Hotel.hs
 
 dist/setup-config: Language/* Language/GIGL/*
-	cabal install
+	cabal install --force-reinstalls
 
 .PHONY: clean
 clean:

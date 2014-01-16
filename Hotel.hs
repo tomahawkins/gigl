@@ -9,7 +9,7 @@ import Language.GIGL.ACL2
 main :: IO ()
 main = writeFile "hotel.lisp" $ unlines $ map show $ acl2 "hotel" () hotel
 
-type GIGL = G.GIGL ()
+type GIGL = G.GIGL () ()
 
 type KeyPair = E (Word64, Word64)
 

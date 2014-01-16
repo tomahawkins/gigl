@@ -11,10 +11,10 @@ import MonadLib
 import Language.GIGL
 
 -- | ACL2 generation.
-acl2 :: String -> a -> GIGL a () -> [SExpr]
+acl2 :: String -> a -> GIGL a () () -> [SExpr]
 acl2 name a b = acl2' name $ snd $ elaborate a b
 
-acl2' :: String -> Program -> [SExpr]
+acl2' :: String -> Program () -> [SExpr]
 acl2' name p = 
   [ SA [SV "set-ignore-ok", SV ":warn"]
   , SA [SV "defun", SV $ name ++ "-init", SA [SV "vars-in"], acl2SExpr $ initialConditions $ variables p]
@@ -23,7 +23,7 @@ acl2' name p =
   where
   vars = [ v | (v, _) <- variables p ]
 
-letRewrite :: [String] -> Stmt -> E Untyped
+letRewrite :: [String] -> Stmt () -> E Untyped
 letRewrite vars s = inputProject vars $ body $ outputTuple vars
   where
   body :: E Untyped -> E Untyped
@@ -166,10 +166,11 @@ newLet var a = do
   set (n, case var of { Nothing -> e; Just v' -> (v', v) : e }, f . Let v (renameVars (flip lookup e) a))
   return $ Var v
 
-stmt :: Stmt -> ACL2 ()
+stmt :: Stmt () -> ACL2 ()
 stmt a = case a of
   Null -> return ()
   Seq a b -> stmt a >> stmt b
+  Intrinsic () -> return ()
   Assign (Var v) e -> do
     newLet (Just v) e
     return ()

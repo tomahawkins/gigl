@@ -24,6 +24,7 @@ module Language.GIGL
   , array
   , function
   -- * Statements
+  , intrinsic
   , (<==)
   , case'
   , if'
@@ -42,26 +43,26 @@ import Data.SBV (Boolean (..))
 import Data.Word
 
 -- | The monad to capture program statements.
-type GIGL a = StateT (a, Program) Id
+type GIGL a i = StateT (a, Program i) Id
 
-modify :: ((a, Program) -> (a, Program)) -> GIGL a ()
+modify :: ((a, Program i) -> (a, Program i)) -> GIGL a i ()
 modify f = get >>= set . f
 
 -- | Get the meta data.
-getMeta :: GIGL a a
+getMeta :: GIGL a i a
 getMeta = get >>= return . fst
 
 -- | Set the meta data.
-setMeta :: a -> GIGL a ()
+setMeta :: a -> GIGL a i ()
 setMeta a = modify $ \ (_, p) -> (a, p)
 
 -- | Modify the meta data.
-modifyMeta :: (a -> a) -> GIGL a ()
+modifyMeta :: (a -> a) -> GIGL a i ()
 modifyMeta f = modify $ \ (a, p) -> (f a, p)
 
-data Program = Program
+data Program a = Program
   { variables :: [(String, Maybe Value)]
-  , statement :: Stmt
+  , statement :: Stmt a
   }
 
 data Value
@@ -74,11 +75,12 @@ instance Value' Bool   where value = VBool
 instance Value' Word64 where value = VWord64
 instance (Value' a, Value' b) => Value' (a, b) where value (a, b) = VPair (value a) (value b)
 
-data Stmt where
-  Null   :: Stmt
-  Seq    :: Stmt -> Stmt -> Stmt
-  If     :: E Bool -> Stmt -> Stmt -> Stmt
-  Assign :: Value' a => E a -> E a -> Stmt
+data Stmt a where
+  Null      :: Stmt a
+  Seq       :: Stmt a -> Stmt a -> Stmt a
+  If        :: E Bool -> Stmt a -> Stmt a -> Stmt a
+  Assign    :: Value' a => E a -> E a -> Stmt b
+  Intrinsic :: a -> Stmt a
 
 -- | Program expressions.
 data E a where 
@@ -117,11 +119,11 @@ instance Boolean (E Bool) where
 type Label = String
 
 -- | Elaborate a program.
-elaborate :: a -> GIGL a () -> (a, Program)
+elaborate :: a -> GIGL a i () -> (a, Program i)
 elaborate a b = snd $ runId $ runStateT (a, Program { variables = [], statement = Null }) b
 
 -- | Declares a variabled with an initial value.
-var :: Value' a => String -> Maybe a -> GIGL b (E a)
+var :: Value' a => String -> Maybe a -> GIGL b i (E a)
 var name init = do
   name <- mangle name
   modify $ \ (a, p) -> (a, p { variables = variables p ++ [(name, value' init)] })
@@ -133,7 +135,7 @@ var name init = do
     Just a  -> Just $ value a
 
 -- | Mange names to ensure variable uniqueness.
-mangle :: String -> GIGL a String
+mangle :: String -> GIGL a i String
 mangle name = do
   (_, Program variables _) <- get
   let vars = map fst variables
@@ -141,33 +143,33 @@ mangle name = do
   if notElem name vars then return name else return (mangle 0)
 
 -- | Declares a variable and makes an immediate assignment.
-var' :: Value' a => String -> E a -> GIGL b (E a)
+var' :: Value' a => String -> E a -> GIGL b i (E a)
 var' name expr = do
   v <- var name Nothing
   v <== expr
   return v
 
 -- | Declares a new state array variable.
-array :: String -> Integer -> GIGL a (E (Array b))
+array :: String -> Integer -> GIGL a i (E (Array b))
 array = undefined
 
 -- | Declares a top level function.
 --   Functions aren't really functions; they don't take arguments and they don't return results.
-function :: Label -> GIGL a () -> GIGL a ()
+function :: Label -> GIGL a i () -> GIGL a i ()
 function = undefined
 
 -- | Jump to a label.
-goto :: Label -> GIGL a ()
+goto :: Label -> GIGL a i ()
 goto = undefined
 
 -- | Case statement with no default.
-case' :: E a -> [(E a -> E Bool, GIGL b ())] -> GIGL b ()
+case' :: E a -> [(E a -> E Bool, GIGL b i ())] -> GIGL b i ()
 case' a b = case b of
   [] -> return ()
   (pred, stmt) : rest -> if' (pred a) stmt $ case' a rest
 
 -- | If then else statement.
-if' :: E Bool -> GIGL a () -> GIGL a () -> GIGL a ()
+if' :: E Bool -> GIGL a i () -> GIGL a i () -> GIGL a i ()
 if' pred onTrue onFalse = do
   (s, p) <- get
   set (s, p { statement = Null })
@@ -180,8 +182,12 @@ if' pred onTrue onFalse = do
   stmt $ If pred (statement pT) (statement pF)
 
 -- | Adds a statement to the program.
-stmt :: Stmt -> GIGL a ()
+stmt :: Stmt i -> GIGL a i ()
 stmt s = modify $ \ (a, p) -> (a, p { statement = Seq (statement p) s }) 
+
+-- | Adds an intrisic statement to the program.
+intrinsic :: i -> GIGL a i ()
+intrinsic = stmt . Intrinsic
 
 -- | Non recursive let expression.
 let' :: String -> E a -> E b -> E b
@@ -198,7 +204,7 @@ a ./= b = bnot $ a .== b
 
 infix 0 <==
 -- | Variable assignment.
-(<==) :: Value' a => E a -> E a -> GIGL b ()
+(<==) :: Value' a => E a -> E a -> GIGL b i ()
 a <== b = stmt $ Assign a b
 
 -- | Conditional expression.
@@ -206,10 +212,10 @@ mux :: E Bool -> E a -> E a -> E a
 mux = Mux
 
 -- | Assert an expression is true.
-assert :: String -> E Bool -> GIGL a ()
+assert :: String -> E Bool -> GIGL a i ()
 assert = undefined
 
 -- | Assume an expression is true.
-assume :: String -> E Bool -> GIGL a ()
+assume :: String -> E Bool -> GIGL a i ()
 assume = undefined
 
