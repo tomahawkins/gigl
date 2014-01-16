@@ -11,7 +11,6 @@ module Language.GIGL
   , E       (..)
   , Stmt    (..)
   , Untyped
-  , Label
   , Boolean (..)
   -- * Program Compilation
   , elaborate
@@ -22,12 +21,12 @@ module Language.GIGL
   , var
   , var'
   , array
-  , function
   -- * Statements
   , intrinsic
   , (<==)
   , case'
   , if'
+  , label
   , goto
   , assert
   , assume
@@ -38,7 +37,7 @@ module Language.GIGL
   , mux
   ) where
 
-import MonadLib hiding (Label)
+import MonadLib
 import Data.SBV (Boolean (..))
 import Data.Word
 
@@ -63,12 +62,13 @@ modifyMeta f = modify $ \ (a, p) -> (f a, p)
 data Program a = Program
   { variables :: [(String, Maybe Value)]
   , statement :: Stmt a
-  }
+  } deriving Show
 
 data Value
   = VBool   Bool
   | VWord64 Word64
   | VPair   Value Value
+  deriving Show
 
 class    Value' a      where value :: a -> Value
 instance Value' Bool   where value = VBool
@@ -80,7 +80,22 @@ data Stmt a where
   Seq       :: Stmt a -> Stmt a -> Stmt a
   If        :: E Bool -> Stmt a -> Stmt a -> Stmt a
   Assign    :: Value' a => E a -> E a -> Stmt b
+  Label     :: String -> Stmt a
+  Goto      :: String -> Stmt a
   Intrinsic :: a -> Stmt a
+
+instance Show a => Show (Stmt a) where
+  show a = case a of
+    Null         -> ""
+    Seq    a b   -> show a ++ show b
+    If     _ b c -> "if (...)\n" ++ indent (show b) ++ "else\n" ++ indent (show c)
+    Assign (Var a) _ -> a ++ " = ...\n"
+    Assign _ _       -> error "Invalid LHS.  Expecting variable, got something else."
+    Intrinsic a      -> show a ++ "\n"
+    Label a          -> a ++ ":\n"
+    Goto  a          -> "goto " ++ a ++ "\n"
+    where
+    indent = unlines . map ("  " ++) . lines
 
 -- | Program expressions.
 data E a where 
@@ -113,10 +128,6 @@ instance Boolean (E Bool) where
   (|||) = Or
   (==>) = Imply
   (<=>) = Equiv
-
-
--- | Labels.
-type Label = String
 
 -- | Elaborate a program.
 elaborate :: a -> GIGL a i () -> (a, Program i)
@@ -153,14 +164,13 @@ var' name expr = do
 array :: String -> Integer -> GIGL a i (E (Array b))
 array = undefined
 
--- | Declares a top level function.
---   Functions aren't really functions; they don't take arguments and they don't return results.
-function :: Label -> GIGL a i () -> GIGL a i ()
-function = undefined
+-- | Inserts a label to name a section of code.
+label :: String -> GIGL a i () -> GIGL a i ()
+label name code = stmt (Label name) >> code
 
 -- | Jump to a label.
-goto :: Label -> GIGL a i ()
-goto = undefined
+goto :: String -> GIGL a i ()
+goto = stmt . Goto
 
 -- | Case statement with no default.
 case' :: E a -> [(E a -> E Bool, GIGL b i ())] -> GIGL b i ()
