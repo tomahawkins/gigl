@@ -35,6 +35,7 @@ module Language.GIGL
   , (.==)
   , (./=)
   , mux
+  , mux'
   ) where
 
 import MonadLib
@@ -212,7 +213,7 @@ infix 4 .==, ./=
 (./=) :: E a -> E a -> E Bool
 a ./= b = bnot $ a .== b
 
-infix 0 <==
+infixr 0 <==
 -- | Variable assignment.
 (<==) :: Value' a => E a -> E a -> GIGL b i ()
 a <== b = stmt $ Assign a b
@@ -220,6 +221,12 @@ a <== b = stmt $ Assign a b
 -- | Conditional expression.
 mux :: E Bool -> E a -> E a -> E a
 mux = Mux
+
+-- | Muxing over a list of predicates with a default condition.
+mux' :: [(E Bool, E b)] -> E b -> E b
+mux' a def = case a of
+  [] -> def
+  (pred, val) : rest -> mux pred val $ mux' rest def
 
 -- | Assert an expression is true.
 assert :: String -> E Bool -> GIGL a i ()
