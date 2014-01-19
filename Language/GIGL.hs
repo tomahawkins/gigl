@@ -172,11 +172,11 @@ label name code = stmt (Label name) >> code
 goto :: String -> GIGL a i ()
 goto = stmt . Goto
 
--- | Case statement with no default.
-case' :: E a -> [(E a -> E Bool, GIGL b i ())] -> GIGL b i ()
-case' a b = case b of
-  [] -> return ()
-  (pred, stmt) : rest -> if' (pred a) stmt $ case' a rest
+-- | Case statement with an optional default condition.
+case' :: E a -> [(E a -> E Bool, GIGL b i ())] -> Maybe (GIGL b i ()) -> GIGL b i ()
+case' a b c = case b of
+  [] -> case c of { Nothing -> return (); Just c -> c }
+  (pred, stmt) : rest -> if' (pred a) stmt $ case' a rest c
 
 -- | If then else statement.
 if' :: E Bool -> GIGL a i () -> GIGL a i () -> GIGL a i ()

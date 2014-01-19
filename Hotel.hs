@@ -87,7 +87,7 @@ hotel = do
 
     -- Access attempt room 2.
     , (accessRoom 2, doorLock2 key >>= (unlockDoor2 <==))
-    ]
+    ] Nothing
 
   where
   -- Predicates for hotel events.
