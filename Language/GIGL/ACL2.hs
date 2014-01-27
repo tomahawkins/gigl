@@ -168,6 +168,7 @@ newLet var a = do
 
 stmt :: Stmt () -> ACL2 ()
 stmt a = case a of
+  Comment _ -> return ()
   Null -> return ()
   Seq a b -> stmt a >> stmt b
   Intrinsic () -> return ()
@@ -175,8 +176,7 @@ stmt a = case a of
     newLet (Just v) e
     return ()
   Assign _ _ -> error "Unexpected LHS of assignment (non-variable)."
-  Label _ -> return ()
-  Goto  _ -> error "Goto statements not supported in ACL2 generation."
+  Call _ -> error "Call statements not supported in ACL2 generation."
   If pred a b -> do
     pred <- newLet Nothing pred
     (i0, e0, f0) <- get

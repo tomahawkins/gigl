@@ -18,16 +18,17 @@ module Language.GIGL
   , setMeta
   , modifyMeta
   -- * Declarations
+  , proc
   , var
   , var'
   , array
   -- * Statements
+  , comment
   , intrinsic
+  , call
   , (<==)
   , case'
   , if'
-  , label
-  , goto
   , assert
   , assume
   -- * Expressions
@@ -61,8 +62,9 @@ modifyMeta :: (a -> a) -> GIGL a i ()
 modifyMeta f = modify $ \ (a, p) -> (f a, p)
 
 data Program a = Program
-  { variables :: [String]
-  , statement :: Stmt a
+  { variables  :: [String]
+  , procedures :: [(String, Stmt a)]
+  , statement  :: Stmt a
   } deriving Show
 
 data Value
@@ -88,20 +90,20 @@ data Stmt a where
   Seq       :: Stmt a -> Stmt a -> Stmt a
   If        :: E Bool -> Stmt a -> Stmt a -> Stmt a
   Assign    :: E a -> E a -> Stmt b
-  Label     :: String -> Stmt a
-  Goto      :: String -> Stmt a
+  Call      :: String -> Stmt a
   Intrinsic :: a -> Stmt a
+  Comment   :: String -> Stmt a
 
 instance Show a => Show (Stmt a) where
   show a = case a of
+    Comment a    -> "// " ++ a
     Null         -> ""
     Seq    a b   -> show a ++ show b
     If     _ b c -> "if (...)\n" ++ indent (show b) ++ "else\n" ++ indent (show c)
     Assign (Var a) _ -> a ++ " = ...\n"
     Assign _ _       -> error "Invalid LHS.  Expecting variable, got something else."
     Intrinsic a      -> show a ++ "\n"
-    Label a          -> a ++ ":\n"
-    Goto  a          -> "goto " ++ a ++ "\n"
+    Call a           -> a ++ "()"
     where
     indent = unlines . map ("  " ++) . lines
 
@@ -139,7 +141,16 @@ instance Boolean (E Bool) where
 
 -- | Elaborate a program.
 elaborate :: a -> GIGL a i () -> (a, Program i)
-elaborate a b = snd $ runId $ runStateT (a, Program { variables = [], statement = Null }) b
+elaborate a b = snd $ runId $ runStateT (a, Program { variables = [], procedures = [], statement = Null }) b
+
+-- | Declares a top level procedure.
+proc :: String -> GIGL a i () -> GIGL a i ()
+proc name proc = do
+  (a, p0) <- get
+  set (a, p0 { statement = Null })
+  proc
+  (a, p1) <- get
+  set (a, p1 { procedures = procedures p1 ++ [(name, statement p1)], statement = statement p0 })
 
 -- | Declares a variable.
 var :: String -> GIGL b i (E a)
@@ -158,21 +169,13 @@ var' name expr = do
 -- | Mange names to ensure variable uniqueness.
 mangle :: String -> GIGL a i String
 mangle name = do
-  (_, Program variables _) <- get
+  (_, Program variables _ _) <- get
   let mangle n = if notElem name' variables then name' else mangle (n + 1) where name' = name ++ "_m" ++ show n
   if notElem name variables then return name else return (mangle 0)
 
 -- | Declares a new state array variable.
 array :: String -> Integer -> GIGL a i (E (Array b))
 array = undefined
-
--- | Inserts a label to name a section of code.
-label :: String -> GIGL a i () -> GIGL a i ()
-label name code = stmt (Label name) >> code
-
--- | Jump to a label.
-goto :: String -> GIGL a i ()
-goto = stmt . Goto
 
 -- | Case statement with an optional default condition.
 case' :: E a -> [(E a -> E Bool, GIGL b i ())] -> Maybe (GIGL b i ()) -> GIGL b i ()
@@ -190,16 +193,24 @@ if' pred onTrue onFalse = do
   set (s, pT { statement = Null })
   onFalse
   (s, pF) <- get
-  set (s, Program { variables = variables pF, statement = statement p })
+  set (s, Program { variables = variables pF, procedures = procedures pF, statement = statement p })
   stmt $ If pred (statement pT) (statement pF)
 
 -- | Adds a statement to the program.
 stmt :: Stmt i -> GIGL a i ()
 stmt s = modify $ \ (a, p) -> (a, p { statement = Seq (statement p) s }) 
 
+-- | Call a procedure.
+call :: String -> GIGL a i ()
+call = stmt . Call
+
 -- | Adds an intrisic statement to the program.
 intrinsic :: i -> GIGL a i ()
 intrinsic = stmt . Intrinsic
+
+-- | Add a comment.
+comment :: String -> GIGL a i ()
+comment = stmt . Comment
 
 -- | Non recursive let expression.
 let' :: String -> E a -> E b -> E b
