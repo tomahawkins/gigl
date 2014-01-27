@@ -61,7 +61,7 @@ modifyMeta :: (a -> a) -> GIGL a i ()
 modifyMeta f = modify $ \ (a, p) -> (f a, p)
 
 data Program a = Program
-  { variables :: [(String, Maybe Value)]
+  { variables :: [String]
   , statement :: Stmt a
   } deriving Show
 
@@ -71,16 +71,23 @@ data Value
   | VPair   Value Value
   deriving Show
 
-class    Value' a      where value :: a -> Value
-instance Value' Bool   where value = VBool
-instance Value' Word64 where value = VWord64
-instance (Value' a, Value' b) => Value' (a, b) where value (a, b) = VPair (value a) (value b)
+class Value' a where
+  value :: a -> Value
+
+instance Value' Bool where
+  value = VBool
+
+instance Value' Word64 where
+  value = VWord64
+
+instance (Value' a, Value' b) => Value' (a, b) where
+  value (a, b) = VPair (value a) (value b)
 
 data Stmt a where
   Null      :: Stmt a
   Seq       :: Stmt a -> Stmt a -> Stmt a
   If        :: E Bool -> Stmt a -> Stmt a -> Stmt a
-  Assign    :: Value' a => E a -> E a -> Stmt b
+  Assign    :: E a -> E a -> Stmt b
   Label     :: String -> Stmt a
   Goto      :: String -> Stmt a
   Intrinsic :: a -> Stmt a
@@ -134,32 +141,26 @@ instance Boolean (E Bool) where
 elaborate :: a -> GIGL a i () -> (a, Program i)
 elaborate a b = snd $ runId $ runStateT (a, Program { variables = [], statement = Null }) b
 
--- | Declares a variabled with an initial value.
-var :: Value' a => String -> Maybe a -> GIGL b i (E a)
-var name init = do
+-- | Declares a variable.
+var :: String -> GIGL b i (E a)
+var name = do
   name <- mangle name
-  modify $ \ (a, p) -> (a, p { variables = variables p ++ [(name, value' init)] })
+  modify $ \ (a, p) -> (a, p { variables = variables p ++ [name] })
   return $ Var name
-  where
-  value' :: Value' a => Maybe a -> Maybe Value
-  value' init = case init of
-    Nothing -> Nothing
-    Just a  -> Just $ value a
+
+-- | Declares a variable and makes an immediate assignment.
+var' :: String -> E a -> GIGL b i (E a)
+var' name expr = do
+  v <- var name
+  v <== expr
+  return v
 
 -- | Mange names to ensure variable uniqueness.
 mangle :: String -> GIGL a i String
 mangle name = do
   (_, Program variables _) <- get
-  let vars = map fst variables
-      mangle n = if notElem name' vars then name' else mangle (n + 1) where name' = name ++ "_m" ++ show n
-  if notElem name vars then return name else return (mangle 0)
-
--- | Declares a variable and makes an immediate assignment.
-var' :: Value' a => String -> E a -> GIGL b i (E a)
-var' name expr = do
-  v <- var name Nothing
-  v <== expr
-  return v
+  let mangle n = if notElem name' variables then name' else mangle (n + 1) where name' = name ++ "_m" ++ show n
+  if notElem name variables then return name else return (mangle 0)
 
 -- | Declares a new state array variable.
 array :: String -> Integer -> GIGL a i (E (Array b))
@@ -204,18 +205,19 @@ intrinsic = stmt . Intrinsic
 let' :: String -> E a -> E b -> E b
 let' = Let
 
-infix 4 .==, ./=
+infix 4 .==
 -- | Equality.
 (.==) :: E a -> E a -> E Bool
 (.==) = Eq
 
+infix 4 ./=
 -- | Inequality.
 (./=) :: E a -> E a -> E Bool
 a ./= b = bnot $ a .== b
 
 infixr 0 <==
 -- | Variable assignment.
-(<==) :: Value' a => E a -> E a -> GIGL b i ()
+(<==) :: E a -> E a -> GIGL b i ()
 a <== b = stmt $ Assign a b
 
 -- | Conditional expression.

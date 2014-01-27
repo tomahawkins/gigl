@@ -16,10 +16,10 @@ type KeyPair = E (Word64, Word64)
 type RoomKey = KeyPair
 
 -- Runs a RoomKey through a lock.  Return a signal if the door unlocks.
-doorLock :: Int -> (Word64, Word64) -> RoomKey -> GIGL (E Bool)
-doorLock room initLock key = do
+doorLock :: Int -> RoomKey -> GIGL (E Bool)
+doorLock room key = do
   -- Lock state.
-  lock <- var ("doorLockState" ++ show room ++ "_lock") $ Just initLock
+  lock <- var ("doorLockState" ++ show room ++ "_lock") -- $ Just initLock
   -- Unlock the door if the key matches the lock state or if the old key value matches the new lock value.
   unlock <- var' ("doorLockState" ++ show room ++ "_unlock") $ key .== lock ||| old key .== new lock
   -- Update lock state: if the old key matches the new lock, then use the key as the next lock state, else keep the state the same.
@@ -40,15 +40,15 @@ type HotelEvent = E (Word64, (Word64, (Word64, Word64)))
 hotel :: GIGL ()
 hotel = do
   -- Initalize the 2 doors.
-  let doorLock1 = doorLock 1 (0, 1)
-      doorLock2 = doorLock 2 (0, 2)
+  let doorLock1 = doorLock 1
+      doorLock2 = doorLock 2
 
   -- Variables to keep track of the current door settings (init to 1 and 2).
-  door1 :: E Word64 <- var "door1" $ Just 1
-  door2 :: E Word64 <- var "door2" $ Just 2
+  door1 :: E Word64 <- var "door1" -- $ Just 1
+  door2 :: E Word64 <- var "door2" -- $ Just 2
 
   -- An incrementing key generator.
-  nextKey :: E Word64 <- var "nextKey" $ Just 3
+  nextKey :: E Word64 <- var "nextKey" -- $ Just 3
 
   -- Output variables:
 
@@ -60,7 +60,7 @@ hotel = do
   unlockDoor2 <- var' "unlockDoor2" $ Const False
 
   -- Nondeterminstic input event.
-  event :: HotelEvent <- var "event" Nothing
+  event :: HotelEvent <- var "event" -- Nothing
   let key = Snd $ Snd event
 
   -- Case on the incoming HotelEvent.

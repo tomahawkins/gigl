@@ -17,11 +17,9 @@ acl2 name a b = acl2' name $ snd $ elaborate a b
 acl2' :: String -> Program () -> [SExpr]
 acl2' name p = 
   [ SA [SV "set-ignore-ok", SV ":warn"]
-  , SA [SV "defun", SV $ name ++ "-init", SA [SV "vars-in"], acl2SExpr $ initialConditions $ variables p]
-  , SA [SV "defun", SV name,              SA [SV "vars-in"], acl2SExpr $ letRewrite vars   $ statement p]
+  --, SA [SV "defun", SV $ name ++ "-init", SA [SV "vars-in"], acl2SExpr $ initialConditions $ variables p]
+  , SA [SV "defun", SV name,              SA [SV "vars-in"], acl2SExpr $ letRewrite (variables p) $ statement p]
   ]
-  where
-  vars = [ v | (v, _) <- variables p ]
 
 letRewrite :: [String] -> Stmt () -> E Untyped
 letRewrite vars s = inputProject vars $ body $ outputTuple vars
@@ -30,6 +28,7 @@ letRewrite vars s = inputProject vars $ body $ outputTuple vars
   ((), (_, _, body)) = runId $ runStateT (0, zip vars vars, id) $ stmt s >> bindOutputs vars
 
 -- | Initial condition relation.
+{-
 initialConditions :: [(String, Maybe Value)] -> E Bool
 initialConditions vars = inputProject (fst $ unzip vars) $ foldl (&&&) true [ init (Var name .==) value | (name, Just value) <- vars ]
   where
@@ -38,6 +37,7 @@ initialConditions vars = inputProject (fst $ unzip vars) $ foldl (&&&) true [ in
     VBool   a   -> f $ Untyped (Const a)
     VWord64 a   -> f $ Untyped (Const a)
     VPair   a b -> init (\ a -> init (\ b -> f $ Untyped $ Pair a b) b) a
+    -}
 
 -- | Variable projection from input tuple.
 inputProject :: [String] -> E a -> E a
