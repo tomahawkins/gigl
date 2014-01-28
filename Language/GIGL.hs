@@ -20,8 +20,6 @@ module Language.GIGL
   -- * Declarations
   , variables
   , proc
-  , var
-  , var'
   , bool
   , word64
   , array
@@ -120,6 +118,7 @@ data E a where
   Snd     :: E (a, b) -> E b
   Const   :: Value' a => a -> E a
   Add     :: E Word64 -> E Word64 -> E Word64
+  Sub     :: E Word64 -> E Word64 -> E Word64
   Not     :: E Bool -> E Bool
   And     :: E Bool -> E Bool -> E Bool
   Or      :: E Bool -> E Bool -> E Bool
@@ -171,6 +170,7 @@ variables = nub . sort . stmt . foldl1 Seq . snd . unzip
     Snd     a     -> expr a
     Const   _     -> []
     Add     a b   -> expr a ++ expr b
+    Sub     a b   -> expr a ++ expr b
     Not     a     -> expr a
     And     a b   -> expr a ++ expr b
     Or      a b   -> expr a ++ expr b
@@ -188,17 +188,6 @@ proc name proc = do
   (a, p1, s1) <- get
   set (a, p1 ++ [(name, s1)], s0)
 
--- | Declares a variable.
-var :: String -> GIGL b i (E a)
-var = return . Var
-
--- | Declares a variable and makes an immediate assignment.
-var' :: String -> E a -> GIGL b i (E a)
-var' name expr = do
-  v <- var name
-  v <== expr
-  return v
-
 -- | A boolean variable.
 bool :: String -> E Bool
 bool = Var
@@ -212,9 +201,9 @@ array :: String -> Integer -> GIGL a i (E (Array b))
 array = undefined
 
 -- | Case statement with an optional default condition.
-case' :: E a -> [(E a -> E Bool, GIGL b i ())] -> Maybe (GIGL b i ()) -> GIGL b i ()
+case' :: E a -> [(E a -> E Bool, GIGL b i ())] -> GIGL b i () -> GIGL b i ()
 case' a b c = case b of
-  [] -> case c of { Nothing -> return (); Just c -> c }
+  [] -> c
   (pred, stmt) : rest -> if' (pred a) stmt $ case' a rest c
 
 -- | If then else statement.
