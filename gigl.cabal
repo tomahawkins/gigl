@@ -21,8 +21,8 @@ library
     monadLib >= 3.7.2,
     sbv      >= 2.10
   exposed-modules:
-    Language.GIGL,
-    Language.GIGL.ACL2
+    Language.GIGL
+    --Language.GIGL.ACL2
   ghc-options: -W
 
 source-repository head

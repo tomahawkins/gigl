@@ -5,7 +5,7 @@ module Language.GIGL
   (
   -- * Types
     GIGL
-  , Program (..)
+  , Program
   , Value   (..)
   , Value'  (..)
   , E       (..)
@@ -18,9 +18,12 @@ module Language.GIGL
   , setMeta
   , modifyMeta
   -- * Declarations
+  , variables
   , proc
   , var
   , var'
+  , bool
+  , word64
   , array
   -- * Statements
   , comment
@@ -40,32 +43,31 @@ module Language.GIGL
   ) where
 
 import MonadLib
+import Data.List (nub, sort)
 import Data.SBV (Boolean (..))
 import Data.Word
 
 -- | The monad to capture program statements.
-type GIGL a i = StateT (a, Program i) Id
+type GIGL a i = StateT (a, Program i, Stmt i) Id
 
-modify :: ((a, Program i) -> (a, Program i)) -> GIGL a i ()
+modify :: ((a, Program i, Stmt i) -> (a, Program i, Stmt i)) -> GIGL a i ()
 modify f = get >>= set . f
 
 -- | Get the meta data.
 getMeta :: GIGL a i a
-getMeta = get >>= return . fst
+getMeta = do
+  (a, _, _) <- get
+  return a
 
 -- | Set the meta data.
 setMeta :: a -> GIGL a i ()
-setMeta a = modify $ \ (_, p) -> (a, p)
+setMeta a = modify $ \ (_, p, s) -> (a, p, s)
 
 -- | Modify the meta data.
 modifyMeta :: (a -> a) -> GIGL a i ()
-modifyMeta f = modify $ \ (a, p) -> (f a, p)
+modifyMeta f = modify $ \ (a, p, s) -> (f a, p, s)
 
-data Program a = Program
-  { variables  :: [String]
-  , procedures :: [(String, Stmt a)]
-  , statement  :: Stmt a
-  } deriving Show
+type Program a = [(String, Stmt a)]
 
 data Value
   = VBool   Bool
@@ -141,23 +143,54 @@ instance Boolean (E Bool) where
 
 -- | Elaborate a program.
 elaborate :: a -> GIGL a i () -> (a, Program i)
-elaborate a b = snd $ runId $ runStateT (a, Program { variables = [], procedures = [], statement = Null }) b
+elaborate a' b = (a, p)
+  where
+  ((), (a, p, _)) = runId $ runStateT (a', [], Null) b
+
+-- | All the variables in a program.
+variables :: Program i -> [String]
+variables = nub . sort . stmt . foldl1 Seq . snd . unzip
+  where
+  stmt :: Stmt i -> [String]
+  stmt a = case a of
+    Comment _    -> []
+    Null         -> []
+    Seq    a b   -> stmt a ++ stmt b
+    If     a b c -> expr a ++ stmt b ++ stmt c
+    Assign a b   -> expr a ++ expr b
+    Intrinsic _  -> []
+    Call _       -> []
+  expr :: E a -> [String]
+  expr a = case a of
+    Var     a     -> [a]
+    Index   a b   -> expr a ++ expr b
+    Let     _ a b -> expr a ++ expr b
+    Untyped a     -> expr a
+    Pair    a b   -> expr a ++ expr b
+    Fst     a     -> expr a
+    Snd     a     -> expr a
+    Const   _     -> []
+    Add     a b   -> expr a ++ expr b
+    Not     a     -> expr a
+    And     a b   -> expr a ++ expr b
+    Or      a b   -> expr a ++ expr b
+    Imply   a b   -> expr a ++ expr b
+    Equiv   a b   -> expr a ++ expr b
+    Eq      a b   -> expr a ++ expr b
+    Mux     a b c -> expr a ++ expr b ++ expr c
 
 -- | Declares a top level procedure.
 proc :: String -> GIGL a i () -> GIGL a i ()
 proc name proc = do
-  (a, p0) <- get
-  set (a, p0 { statement = Null })
+  (a, p0, s0) <- get
+  set (a, p0, Null)
   proc
-  (a, p1) <- get
-  set (a, p1 { procedures = procedures p1 ++ [(name, statement p1)], statement = statement p0 })
+  (a, p1, s1) <- get
+  set (a, p1 ++ [(name, s1)], s0)
 
 -- | Declares a variable.
 var :: String -> GIGL b i (E a)
-var name = do
-  name <- mangle name
-  modify $ \ (a, p) -> (a, p { variables = variables p ++ [name] })
-  return $ Var name
+var = return . Var
 
 -- | Declares a variable and makes an immediate assignment.
 var' :: String -> E a -> GIGL b i (E a)
@@ -166,12 +199,13 @@ var' name expr = do
   v <== expr
   return v
 
--- | Mange names to ensure variable uniqueness.
-mangle :: String -> GIGL a i String
-mangle name = do
-  (_, Program variables _ _) <- get
-  let mangle n = if notElem name' variables then name' else mangle (n + 1) where name' = name ++ "_m" ++ show n
-  if notElem name variables then return name else return (mangle 0)
+-- | A boolean variable.
+bool :: String -> E Bool
+bool = Var
+
+-- | A word64 variable.
+word64 :: String -> E Word64
+word64 = Var
 
 -- | Declares a new state array variable.
 array :: String -> Integer -> GIGL a i (E (Array b))
@@ -186,19 +220,19 @@ case' a b c = case b of
 -- | If then else statement.
 if' :: E Bool -> GIGL a i () -> GIGL a i () -> GIGL a i ()
 if' pred onTrue onFalse = do
-  (s, p) <- get
-  set (s, p { statement = Null })
+  (a, p, s0) <- get
+  set (a, p, Null)
   onTrue
-  (s, pT) <- get
-  set (s, pT { statement = Null })
+  (a, p, s1) <- get
+  set (a, p, Null)
   onFalse
-  (s, pF) <- get
-  set (s, Program { variables = variables pF, procedures = procedures pF, statement = statement p })
-  stmt $ If pred (statement pT) (statement pF)
+  (a, p, s2) <- get
+  set (a, p, s0)
+  stmt $ If pred s1 s2
 
 -- | Adds a statement to the program.
 stmt :: Stmt i -> GIGL a i ()
-stmt s = modify $ \ (a, p) -> (a, p { statement = Seq (statement p) s }) 
+stmt s' = modify $ \ (a, p, s) -> (a, p, Seq s s') 
 
 -- | Call a procedure.
 call :: String -> GIGL a i ()
