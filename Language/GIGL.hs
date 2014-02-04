@@ -11,7 +11,6 @@ module Language.GIGL
   , E       (..)
   , Stmt    (..)
   , Untyped
-  , Boolean (..)
   -- * Program Compilation
   , elaborate
   , getMeta
@@ -38,11 +37,17 @@ module Language.GIGL
   , (./=)
   , mux
   , mux'
+  , true
+  , false
+  , bnot
+  , (&&&)
+  , (|||)
+  , (==>)
+  , (<=>)
   ) where
 
 import MonadLib
 import Data.List (nub, sort)
-import Data.SBV (Boolean (..))
 import Data.Word
 
 -- | The monad to capture program statements.
@@ -130,15 +135,6 @@ data E a where
 data Untyped
 
 data Array a
-
-instance Boolean (E Bool) where
-  true  = Const True
-  false = Const False
-  bnot  = Not
-  (&&&) = And
-  (|||) = Or
-  (==>) = Imply
-  (<=>) = Equiv
 
 -- | Elaborate a program.
 elaborate :: a -> GIGL a i () -> (a, Program i)
@@ -271,4 +267,29 @@ assert = undefined
 -- | Assume an expression is true.
 assume :: String -> E Bool -> GIGL a i ()
 assume = undefined
+
+true :: E Bool
+true = Const True
+
+false :: E Bool
+false = Const False
+
+bnot :: E Bool -> E Bool
+bnot = Not
+
+infixr 3 &&&
+(&&&) :: E Bool -> E Bool -> E Bool
+(&&&) = And
+
+infixr 2 |||
+(|||) :: E Bool -> E Bool -> E Bool
+(|||) = Or
+
+infixr 1 ==>
+(==>) :: E Bool -> E Bool -> E Bool
+(==>) = Imply
+
+infixr 1 <=>
+(<=>) :: E Bool -> E Bool -> E Bool
+(<=>) = Equiv
 

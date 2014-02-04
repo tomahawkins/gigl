@@ -18,8 +18,7 @@ cabal-version: >= 1.9.2
 library
   build-depends:
     base     >= 4.0,
-    monadLib >= 3.7.2,
-    sbv      >= 2.10
+    monadLib >= 3.7.2
   exposed-modules:
     Language.GIGL
     --Language.GIGL.ACL2
